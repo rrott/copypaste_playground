@@ -1,0 +1,294 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Copy &amp; Paste playground</title>
+<!-- the DOM tree viewer is inspired by 
+     Live DOM Viewer at 
+     https://software.hixie.ch/utilities/js/live-dom-viewer/ 
+
+-->
+<!-- CSS style inspired by @RenateUSB: https://jsfiddle.net/1fynun7a/1591/ -->
+<style>
+    
+    .hidden {
+        display:none;
+    }
+    
+    h1, h2, h3 {
+        margin: 0;
+    }
+    
+    p.tree,
+    ul.tree,
+    ul.tree ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-family: monospace;
+      word-break: break-all;
+    }
+
+    ul.tree ul {
+      margin-left: 1.0em;
+    }
+
+    ul.tree li {
+      margin-left: 0.35em;
+      border-left: thin solid #000;
+    }
+
+    ul.tree li:before {
+      width: 0.9em;
+      height: 0.6em;
+      margin-right: 0.1em;
+      vertical-align: top;
+      border-bottom: thin solid #000;
+      content: "";
+      display: inline-block;
+    }
+
+    ul.tree :last-child {
+      border-left: none;
+    }
+    ul.tree :last-child:before {
+      border-left: thin solid #000;
+    }
+    
+    li {
+        color: #888;
+    }
+    .tag-name {
+        color: purple;
+    }
+    .attr-name {
+        color: darkgoldenrod;
+    }
+    .attr-value {
+        color: blue;
+    }
+    .text-node {
+        color: black;
+    }
+    .comment-node {
+        color: green;
+    }
+    
+    textarea, .editable {
+        border: inset;
+        height: 80px;
+        resize: none;
+        overflow: auto;
+        padding: 3px;
+    }
+    
+    * {
+        font-family:  monospace;
+    }
+        
+    #grid {
+        display: grid;
+        margin: 5px;
+        grid-template-columns: 1fr 1fr;
+        grid-column-gap: 2%;
+        grid-template-rows: auto;
+        grid-template-areas: 
+          "header1 header2"
+          "data1 data2 "
+          "button button2"
+          "dom1 dom2";
+    }
+    body {
+        max-width: 98%;
+        margin: auto;
+    }
+    
+</style>
+
+ 
+<h1 style="text-align:center">Secur<span style="color:red">it</span>um Copy &amp; Paste playground</h1>
+<p style="display:none">Welcome to the Copy &amp; Paste playground. In this playground, you can play around with copy/paste behaviour in browsers. You can copy arbitrary HTML to the clipboard, and see how any HTML pasted from clipboard get parsed by browser.</p>
+<div id="grid">
+<h2 style="grid-area:header1">HTML Input</h2>
+<textarea style="grid-area:data1" placeholder="Enter some HTML here" id="input">
+</textarea>
+<button draggable="true" ondragstart="
+    //event.preventDefault();
+    event.dataTransfer.setData('text/html', input.value);
+    
+" onclick="copyButtonClicked=true;document.execCommand('copy')" style="grid-area:button">Copy as HTML</button>
+<div style="grid-area:dom1">
+<h3>DOM tree</h3>
+<span id="inputDom"></span>
+</div>
+<h2 style="grid-area:header2">Paste target (Rich editor)</h2>
+<div style="grid-area:data2" class="editable" id="editable" contenteditable></div>
+<button style="grid-area:button2" onclick="editable.textContent='';updateOutputDomTree()">Clear</button>
+<div style="grid-area:dom2">
+    <h3>DOM tree</h3>
+<span id="outputDom"></span> 
+</div>
+</div>
+
+
+<script>
+    const template = document.createElement('template');
+    const inputTextarea = document.querySelector('#input');
+    const inputDomElement = document.querySelector('#inputDom');
+    const outputDomElement = document.querySelector('#outputDom');
+    const editableDomElement = document.querySelector('#editable');
+    let copyButtonClicked = false;
+    
+    inputTextarea.oninput = ev => {
+        const input = '<body>' + ev.target.value;
+        template.innerHTML = input;
+        
+        inputDomElement.textContent = '';
+        const mainTree = createMainTree(template.content.childNodes)
+        inputDomElement.appendChild(mainTree);
+        
+    }
+    
+    function updateOutputDomTree() {        
+        outputDomElement.textContent = '';
+        const mainTree = createMainTree(editableDomElement.childNodes);
+        outputDomElement.appendChild(mainTree);
+        
+    }
+    
+    document.querySelector('#editable').oninput = updateOutputDomTree;
+    
+    document.addEventListener('copy', ev => {
+        const clicked = copyButtonClicked;
+        copyButtonClicked = false;
+        
+        if (!clicked && ev.target !== inputTextarea) return;
+        
+        const val = inputTextarea.value;
+        ev.preventDefault();
+        ev.clipboardData.setData('text/html', val);
+        ev.clipboardData.setData('text/plain', val);
+    });
+    
+</script>
+    
+
+    
+<!-- Code for generating the view of the DOM tree -->
+<template id="element">
+    <li class="tag">&lt;<span class="tag-name"></span><span class="attributes"></span><span class="ending"></span>&gt;
+        <ul class="children"></ul>
+    </li>
+    
+</template>
+
+<template id="attribute">&#32;<span class="attr-name"></span>="<span class="attr-value"></span>"</template>
+
+<template id="node-list">
+    <ul class="list-root"></ul>
+</template>
+
+<template id="comment">
+    <li class="comment-node">#comment: <span class="comment-text"></span></li>
+</template>
+
+<template id="text">
+    <li>#text: "<span class="text-node"></span>"</li>
+</template>
+
+<script>
+    const elementTemplate = document.getElementById('element');
+    const attributeTemplate = document.getElementById('attribute');
+    function createElementNode(node) {
+        const template = document.importNode(elementTemplate.content, true);
+        
+        template.querySelector('.tag-name').textContent = node.tagName;
+        if (node.attributes.length > 0) {
+            const attributes = template.querySelector('.attributes');
+            for (let attr of node.attributes) {
+                const at = document.importNode(attributeTemplate.content, true);
+                at.querySelector('.attr-name').textContent = attr.name;
+                at.querySelector('.attr-value').textContent = attr.value;
+                attributes.appendChild(at);
+            }
+        }
+        const children = template.querySelector('.children');
+        if (node.hasChildNodes()) {
+            children.appendChild(createTreeForNodeList(node.childNodes));
+        } else {
+            children.remove();
+            template.querySelector('.ending').textContent = '/';
+        }
+        
+        return template;
+    }
+    
+    const textTemplate = document.getElementById('text');
+    function createTextNode(node) {
+        const template = document.importNode(textTemplate.content, true);
+        template.querySelector('.text-node').textContent = node.textContent;
+        
+        return template;
+    }
+    
+    const commentTemplate = document.getElementById('comment');
+    function createCommentNode(node) {
+        const template = document.importNode(commentTemplate.content, true);
+        template.querySelector('.comment-text').textContent = node.textContent;
+        
+        return template;
+    }
+    
+    const nodeListTemplate = document.getElementById('node-list');
+    function createTreeForNodeList(nodeList, isMainTree=false) {
+        const template = document.importNode(nodeListTemplate.content, true);
+        const listRoot = template.querySelector('.list-root');
+        if (isMainTree) {
+            listRoot.classList.add('tree');
+        }
+        
+        for (let child of nodeList) {
+            listRoot.appendChild(processNode(child));
+        }
+        
+        return template;
+    }
+    
+    const emptyTemplate = document.createElement('template');
+    function processNode(node) {
+        switch (node.nodeType) {
+        case Node.ELEMENT_NODE:
+            return createElementNode(node);
+        case Node.TEXT_NODE:
+            return createTextNode(node);
+        case Node.COMMENT_NODE:
+            return createCommentNode(node);
+        default:
+            return emptyTemplate.content;
+        }
+    }
+    
+    function createMainTree(node) {
+        return createTreeForNodeList(node, true);
+    }
+    
+</script>
+
+<!--
+     FILE ARCHIVED ON 01:17:26 Feb 25, 2023 AND RETRIEVED FROM THE
+     INTERNET ARCHIVE ON 12:51:05 Oct 16, 2024.
+     JAVASCRIPT APPENDED BY WAYBACK MACHINE, COPYRIGHT INTERNET ARCHIVE.
+
+     ALL OTHER CONTENT MAY ALSO BE PROTECTED BY COPYRIGHT (17 U.S.C.
+     SECTION 108(a)(3)).
+-->
+<!--
+playback timings (ms):
+  captures_list: 1.204
+  exclusion.robots: 0.057
+  exclusion.robots.policy: 0.036
+  esindex: 0.021
+  cdx.remote: 6.819
+  LoadShardBlock: 160.344 (3)
+  PetaboxLoader3.resolve: 108.881 (4)
+  PetaboxLoader3.datanode: 67.657 (4)
+  load_resource: 88.267
+-->
